@@ -1,0 +1,21 @@
+{
+  "name": "file-organizer",
+  "version": "1.0.0",
+  "description": "CLI tool for file management",
+  "main": "file-organizer.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hontonoran/file-organizer.git"
+  },
+  "keywords": [],
+  "author": "hontonoran <hontonoran@gmail.com>",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/hontonoran/file-organizer/issues"
+  },
+  "homepage": "https://github.com/hontonoran/file-organizer#readme"
+}
