@@ -1,5 +1,5 @@
-
 import { Scanner } from './lib/scanner.js';
+import { DuplicateFinder } from './lib/duplicates.js';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
@@ -118,13 +118,12 @@ async function main() {
 
   try {
     switch (command) {
-      case 'scan':
-        await runScan(directory);
+        case 'duplicates':
+        await runDuplicates(directory);
         break;
 
-      case 'duplicates':
-      case 'organize':
-      case 'cleanup':
+        case 'organize':
+        case 'cleanup':
         console.log(`Command "${command}" is not implemented yet.`);
         break;
 
@@ -136,6 +135,44 @@ async function main() {
     console.error(`\nError: ${error.message}`);
     process.exitCode = 1;
   }
+}
+
+async function runDuplicates(directory) {
+  const finder = new DuplicateFinder();
+  let processedFiles = 0;
+
+  finder.on('search-start', ({ directory }) => {
+    console.log(`Searching for duplicates in: ${path.resolve(directory)}`);
+  });
+
+  finder.on('file-processed', () => {
+    processedFiles += 1;
+    process.stdout.write(`\rProcessed: ${processedFiles} files`);
+  });
+
+  finder.on('duplicates-found', (results) => {
+    console.log('\n\nDuplicate Search Results');
+    console.log('----------------------------------');
+    console.log(`Total files scanned: ${results.totalFiles}`);
+    console.log(`Duplicate groups: ${results.totalGroups}`);
+
+    results.duplicateGroups.forEach((group, index) => {
+      console.log(`\nGroup ${index + 1} (${group.count} copies)`);
+      console.log(`SHA-256: ${group.hash}`);
+      console.log(`File size: ${formatSize(group.fileSize)}`);
+
+      for (const file of group.files) {
+        console.log(`  ${file.path}`);
+      }
+
+      console.log(`Wasted space: ${formatSize(group.wastedSpace)}`);
+    });
+
+    console.log('\n----------------------------------');
+    console.log(`Total wasted space: ${formatSize(results.totalWastedSpace)}`);
+  });
+
+  await finder.findDuplicates(directory);
 }
 
 await main();

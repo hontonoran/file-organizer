@@ -21,3 +21,16 @@ Recursively scans a directory and displays detailed file statistics.
 - Oldest file by modification date
 - Progress tracking using EventEmitter
 - File system error handling
+
+### Duplicates Command
+
+Recursively searches for duplicate files based on their content using SHA-256 hashing.
+
+**Features:**
+- SHA-256 hashing using Node.js `crypto` module
+- Memory-efficient file reading with streams
+- Duplicate detection regardless of file names or extensions
+- Grouping files by identical hashes
+- Calculating wasted disk space
+- Progress tracking using `EventEmitter`
+- File system error handling
