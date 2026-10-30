@@ -47,3 +47,20 @@ Recursively copies files into category-based directories while preserving the or
 - Prevents overwriting by generating unique filenames
 - Tracks copying progress using `EventEmitter`
 - Handles file system errors
+
+
+### Cleanup Command
+
+Finds files older than a specified number of days based on their last modification date.
+By default, the command runs in **dry run mode** and does not delete any files.
+
+**Features:**
+- Recursive file scanning
+- File age calculation using modification timestamps
+- Safe dry run mode by default
+- File deletion only with `--confirm`
+- Progress tracking with `EventEmitter`
+- Summary of deleted files and freed disk space
+- File system error handling
+
+The command displays matching files without deleting them. Use `--confirm` to permanently delete the matching files.

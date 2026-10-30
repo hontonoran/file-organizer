@@ -1,6 +1,7 @@
 import { Scanner } from './lib/scanner.js';
 import { DuplicateFinder } from './lib/duplicates.js';
 import { Organizer } from './lib/organizer.js';
+import { Cleanup } from './lib/cleanup.js';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
@@ -146,9 +147,30 @@ async function main() {
         break;
       }
 
-      case 'cleanup':
-        console.log(`Command "${command}" is not implemented yet.`);
+
+      case 'cleanup': {
+        const olderThanIndex = args.indexOf('--older-than');
+        const olderThanValue = args[olderThanIndex + 1];
+        const confirm = args.includes('--confirm');
+
+        if (
+          olderThanIndex === -1 ||
+          !olderThanValue ||
+          olderThanValue.startsWith('--')
+        ) {
+          throw new Error('Use --older-than <days> to specify file age.');
+        }
+
+        const olderThan = Number(olderThanValue);
+
+        if (!Number.isFinite(olderThan) || olderThan < 0) {
+          throw new Error('--older-than must be a non-negative number.');
+        }
+
+        await runCleanup(directory, olderThan, confirm);
         break;
+      }
+
 
       default:
         console.error(`Unknown command: ${command}`);
@@ -161,79 +183,119 @@ async function main() {
 }
 
 async function runDuplicates(directory) {
-    const finder = new DuplicateFinder();
-    let processedFiles = 0;
+  const finder = new DuplicateFinder();
+  let processedFiles = 0;
 
-    finder.on('search-start', ({ directory }) => {
-      console.log(`Searching for duplicates in: ${path.resolve(directory)}`);
-    });
+  finder.on('search-start', ({ directory }) => {
+    console.log(`Searching for duplicates in: ${path.resolve(directory)}`);
+  });
 
-    finder.on('file-processed', () => {
-      processedFiles += 1;
-      process.stdout.write(`\rProcessed: ${processedFiles} files`);
-    });
+  finder.on('file-processed', () => {
+    processedFiles += 1;
+    process.stdout.write(`\rProcessed: ${processedFiles} files`);
+  });
 
-    finder.on('duplicates-found', (results) => {
-      console.log('\n\nDuplicate Search Results');
-      console.log('----------------------------------');
-      console.log(`Total files scanned: ${results.totalFiles}`);
-      console.log(`Duplicate groups: ${results.totalGroups}`);
+  finder.on('duplicates-found', (results) => {
+    console.log('\n\nDuplicate Search Results');
+    console.log('----------------------------------');
+    console.log(`Total files scanned: ${results.totalFiles}`);
+    console.log(`Duplicate groups: ${results.totalGroups}`);
 
-      results.duplicateGroups.forEach((group, index) => {
-        console.log(`\nGroup ${index + 1} (${group.count} copies)`);
-        console.log(`SHA-256: ${group.hash}`);
-        console.log(`File size: ${formatSize(group.fileSize)}`);
+    results.duplicateGroups.forEach((group, index) => {
+      console.log(`\nGroup ${index + 1} (${group.count} copies)`);
+      console.log(`SHA-256: ${group.hash}`);
+      console.log(`File size: ${formatSize(group.fileSize)}`);
 
-        for (const file of group.files) {
-          console.log(`  ${file.path}`);
-        }
-
-        console.log(`Wasted space: ${formatSize(group.wastedSpace)}`);
-      });
-
-      console.log('\n----------------------------------');
-      console.log(`Total wasted space: ${formatSize(results.totalWastedSpace)}`);
-    });
-
-    await finder.findDuplicates(directory);
-  }
-
-  async function runOrganize(sourceDirectory, outputDirectory) {
-    const organizer = new Organizer();
-    let processedFiles = 0;
-
-    organizer.on('organize-start', ({ sourceDirectory, outputDirectory }) => {
-      console.log(`Organizing: ${path.resolve(sourceDirectory)}`);
-      console.log(`Output: ${path.resolve(outputDirectory)}`);
-    });
-
-    organizer.on('copy-start', ({ source }) => {
-      console.log(`Copying: ${path.basename(source)}`);
-    });
-
-    organizer.on('copy-complete', () => {
-      processedFiles++;
-      console.log(`Copied: ${processedFiles} files`);
-    });
-
-    organizer.on('copy-error', ({ file, error }) => {
-      console.error(`\nFailed to copy ${file}: ${error}`);
-    });
-
-    organizer.on('organize-complete', (summary) => {
-      console.log('\n\nOrganization complete!');
-      console.log('----------------------------------');
-
-      for (const [category, count] of Object.entries(summary.byCategory)) {
-        console.log(`${category}: ${count} files`);
+      for (const file of group.files) {
+        console.log(`  ${file.path}`);
       }
 
-      console.log('----------------------------------');
-      console.log(`Total copied: ${summary.copiedFiles} files`);
-      console.log(`Total size: ${formatSize(summary.totalSize)}`);
+      console.log(`Wasted space: ${formatSize(group.wastedSpace)}`);
     });
 
-    await organizer.organize(sourceDirectory, outputDirectory);
-  }
+    console.log('\n----------------------------------');
+    console.log(`Total wasted space: ${formatSize(results.totalWastedSpace)}`);
+  });
 
-  await main();
+  await finder.findDuplicates(directory);
+}
+
+async function runOrganize(sourceDirectory, outputDirectory) {
+  const organizer = new Organizer();
+  let processedFiles = 0;
+
+  organizer.on('organize-start', ({ sourceDirectory, outputDirectory }) => {
+    console.log(`Organizing: ${path.resolve(sourceDirectory)}`);
+    console.log(`Output: ${path.resolve(outputDirectory)}`);
+  });
+
+  organizer.on('copy-start', ({ source }) => {
+    console.log(`Copying: ${path.basename(source)}`);
+  });
+
+  organizer.on('copy-complete', () => {
+    processedFiles++;
+    console.log(`Copied: ${processedFiles} files`);
+  });
+
+  organizer.on('copy-error', ({ file, error }) => {
+    console.error(`\nFailed to copy ${file}: ${error}`);
+  });
+
+  organizer.on('organize-complete', (summary) => {
+    console.log('\n\nOrganization complete!');
+    console.log('----------------------------------');
+
+    for (const [category, count] of Object.entries(summary.byCategory)) {
+      console.log(`${category}: ${count} files`);
+    }
+
+    console.log('----------------------------------');
+    console.log(`Total copied: ${summary.copiedFiles} files`);
+    console.log(`Total size: ${formatSize(summary.totalSize)}`);
+  });
+
+  await organizer.organize(sourceDirectory, outputDirectory);
+}
+
+
+async function runCleanup(directory, olderThan, confirm) {
+  const cleaner = new Cleanup();
+  let deletedCount = 0;
+
+  cleaner.on('cleanup-start', ({ directory, olderThan }) => {
+    console.log(`Cleanup: ${path.resolve(directory)}`);
+    console.log(`Looking for files older than ${olderThan} days...`);
+  });
+
+  cleaner.on('file-found', (file) => {
+    console.log(`\n${file.path}`);
+    console.log(`  Size: ${formatSize(file.size)}`);
+    console.log(`  Modified: ${file.modified.toLocaleDateString()}`);
+    console.log(`  Age: ${Math.floor(file.ageInDays)} days`);
+  });
+
+  cleaner.on('file-deleted', () => {
+    deletedCount++;
+    console.log(`Deleted: ${deletedCount} files`);
+  });
+
+  cleaner.on('cleanup-complete', (results) => {
+    console.log('\n----------------------------------');
+    console.log(`Found: ${results.totalFiles} old files`);
+    console.log(`Total size: ${formatSize(results.totalSize)}`);
+
+    if (results.dryRun) {
+      console.log('\nDRY RUN: No files were deleted.');
+      console.log('Use --confirm to delete these files.');
+    } else {
+      console.log('\nCleanup complete!');
+      console.log(`Deleted: ${results.deletedFiles} files`);
+      console.log(`Space freed: ${formatSize(results.deletedSize)}`);
+    }
+  });
+
+  await cleaner.cleanup(directory, olderThan, confirm);
+}
+
+await main();
