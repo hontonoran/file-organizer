@@ -1,66 +1,60 @@
-# file-organizer
+# File Organizer
 
-### Error Handling
+A Node.js CLI tool for scanning directories, finding duplicate files, organizing files by category, and cleaning up outdated files.
 
-The scanner uses `try...catch` to handle errors during directory scanning and file operations.
-Errors are converted into descriptive messages and propagated to the caller for further handling.
+## Getting Started
 
-- `ENOENT` — File or directory not found.
-- `EACCES` — Permission denied.
-- `EPERM` — Operation not permitted.
+**Requirements:** Node.js 20.12+ and npm.
+No external runtime dependencies are required.
 
-### Scan Command
+```bash
+git clone https://github.com/hontonoran/file-organizer.git
+cd file-organizer
+npm install
+```
 
-Recursively scans a directory and displays detailed file statistics.
+## Commands
 
-**Features:**
-- Total number and size of files
-- File statistics grouped by extension
-- File age distribution (last 7 days, last 30 days, older than 90 days)
-- Top 3 largest files
-- Oldest file by modification date
-- Progress tracking using EventEmitter
-- File system error handling
+| Command | Description | Usage |
+|---|---|---|
+| `scan` | Recursively scans a directory and displays file statistics, including types, sizes, age, and largest files. | `node file-organizer.js scan <directory>` |
+| `duplicates` | Detects identical files using SHA-256 and calculates wasted disk space. | `node file-organizer.js duplicates <directory>` |
+| `organize` | Copies files into Documents, Images, Archives, Code, Videos, and Other categories. | `node file-organizer.js organize <source> --output <target>` |
+| `cleanup` | Lists files older than the specified number of days without deleting them. | `node file-organizer.js cleanup <directory> --older-than <days>` |
+| `cleanup --confirm` | Permanently deletes files matching the specified age threshold. | `node file-organizer.js cleanup <directory> --older-than <days> --confirm` |
 
-### Duplicates Command
+Commands can also be executed through npm scripts, for example:
 
-Recursively searches for duplicate files based on their content using SHA-256 hashing.
+```bash
+npm run scan -- ./test-files
+```
 
-**Features:**
-- SHA-256 hashing using Node.js `crypto` module
-- Memory-efficient file reading with streams
-- Duplicate detection regardless of file names or extensions
-- Grouping files by identical hashes
-- Calculating wasted disk space
-- Progress tracking using `EventEmitter`
-- File system error handling
+## Technical Features
 
-### Organize Command
+- **EventEmitter** — tracks scanning, hashing, copying, and deletion events.
+- **Streams** — processes files using `createReadStream()` and copies files of 10 MiB or more with `pipeline()`.
+- **SHA-256** — identifies duplicate files based on their content.
+- **Safe copying** — preserves original files and resolves filename conflicts with numeric suffixes.
+- **Error handling** — handles file system errors such as `ENOENT`, `EACCES`, and `EPERM`.
+- **Dry run** — prevents file deletion unless `--confirm` is explicitly provided.
 
-Recursively copies files into category-based directories while preserving the original files.
+## Project Structure
 
-**Features:**
-- Organizes files into Documents, Images, Archives, Code, Videos, and Other
-- Creates category directories automatically
-- Uses `fs.copyFile()` for files smaller than 10 MB
-- Uses streams and `pipeline()` for files 10 MB or larger
-- Prevents overwriting by generating unique filenames
-- Tracks copying progress using `EventEmitter`
-- Handles file system errors
+```text
+file-organizer/
+├── file-organizer.js
+├── lib/
+│   ├── scanner.js
+│   ├── duplicates.js
+│   ├── organizer.js
+│   └── cleanup.js
+├── package.json
+├── .gitignore
+└── README.md
+```
 
+## Important Notes
 
-### Cleanup Command
+The `organize` command copies files without removing the originals.
 
-Finds files older than a specified number of days based on their last modification date.
-By default, the command runs in **dry run mode** and does not delete any files.
-
-**Features:**
-- Recursive file scanning
-- File age calculation using modification timestamps
-- Safe dry run mode by default
-- File deletion only with `--confirm`
-- Progress tracking with `EventEmitter`
-- Summary of deleted files and freed disk space
-- File system error handling
-
-The command displays matching files without deleting them. Use `--confirm` to permanently delete the matching files.
+The `cleanup` command runs in dry run mode by default. Using `--confirm` permanently deletes matching files and cannot be undone.
