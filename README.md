@@ -58,3 +58,13 @@ file-organizer/
 The `organize` command copies files without removing the originals.
 
 The `cleanup` command runs in dry run mode by default. Using `--confirm` permanently deletes matching files and cannot be undone.
+
+## Testing
+
+Run the automated tests using Node.js built-in test runner:
+
+```bash
+npm test
+```
+
+Tests cover scanning, duplicate detection, file organization, safe cleanup, and error handling.
