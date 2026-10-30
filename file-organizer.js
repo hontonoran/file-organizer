@@ -1,5 +1,6 @@
 import { Scanner } from './lib/scanner.js';
 import { DuplicateFinder } from './lib/duplicates.js';
+import { Organizer } from './lib/organizer.js';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
@@ -108,22 +109,44 @@ async function runScan(directory) {
   await scanner.scan(directory);
 }
 
+
 async function main() {
   if (!directory) {
     console.error('Error: Directory path is required.');
-    console.log('Usage: node file-organizer.js scan <directory>');
+    console.log('Usage: node file-organizer.js <command> <directory>');
     process.exitCode = 1;
     return;
   }
 
   try {
     switch (command) {
-        case 'duplicates':
+      case 'scan':
+        await runScan(directory);
+        break;
+
+      case 'duplicates':
         await runDuplicates(directory);
         break;
 
-        case 'organize':
-        case 'cleanup':
+      case 'organize': {
+        const outputIndex = args.indexOf('--output');
+        const outputDirectory = args[outputIndex + 1];
+
+        if (
+          outputIndex === -1 ||
+          !outputDirectory ||
+          outputDirectory.startsWith('--')
+        ) {
+          throw new Error(
+            'Output directory is required. Use --output <directory>.'
+          );
+        }
+
+        await runOrganize(directory, outputDirectory);
+        break;
+      }
+
+      case 'cleanup':
         console.log(`Command "${command}" is not implemented yet.`);
         break;
 
@@ -138,41 +161,79 @@ async function main() {
 }
 
 async function runDuplicates(directory) {
-  const finder = new DuplicateFinder();
-  let processedFiles = 0;
+    const finder = new DuplicateFinder();
+    let processedFiles = 0;
 
-  finder.on('search-start', ({ directory }) => {
-    console.log(`Searching for duplicates in: ${path.resolve(directory)}`);
-  });
-
-  finder.on('file-processed', () => {
-    processedFiles += 1;
-    process.stdout.write(`\rProcessed: ${processedFiles} files`);
-  });
-
-  finder.on('duplicates-found', (results) => {
-    console.log('\n\nDuplicate Search Results');
-    console.log('----------------------------------');
-    console.log(`Total files scanned: ${results.totalFiles}`);
-    console.log(`Duplicate groups: ${results.totalGroups}`);
-
-    results.duplicateGroups.forEach((group, index) => {
-      console.log(`\nGroup ${index + 1} (${group.count} copies)`);
-      console.log(`SHA-256: ${group.hash}`);
-      console.log(`File size: ${formatSize(group.fileSize)}`);
-
-      for (const file of group.files) {
-        console.log(`  ${file.path}`);
-      }
-
-      console.log(`Wasted space: ${formatSize(group.wastedSpace)}`);
+    finder.on('search-start', ({ directory }) => {
+      console.log(`Searching for duplicates in: ${path.resolve(directory)}`);
     });
 
-    console.log('\n----------------------------------');
-    console.log(`Total wasted space: ${formatSize(results.totalWastedSpace)}`);
-  });
+    finder.on('file-processed', () => {
+      processedFiles += 1;
+      process.stdout.write(`\rProcessed: ${processedFiles} files`);
+    });
 
-  await finder.findDuplicates(directory);
-}
+    finder.on('duplicates-found', (results) => {
+      console.log('\n\nDuplicate Search Results');
+      console.log('----------------------------------');
+      console.log(`Total files scanned: ${results.totalFiles}`);
+      console.log(`Duplicate groups: ${results.totalGroups}`);
 
-await main();
+      results.duplicateGroups.forEach((group, index) => {
+        console.log(`\nGroup ${index + 1} (${group.count} copies)`);
+        console.log(`SHA-256: ${group.hash}`);
+        console.log(`File size: ${formatSize(group.fileSize)}`);
+
+        for (const file of group.files) {
+          console.log(`  ${file.path}`);
+        }
+
+        console.log(`Wasted space: ${formatSize(group.wastedSpace)}`);
+      });
+
+      console.log('\n----------------------------------');
+      console.log(`Total wasted space: ${formatSize(results.totalWastedSpace)}`);
+    });
+
+    await finder.findDuplicates(directory);
+  }
+
+  async function runOrganize(sourceDirectory, outputDirectory) {
+    const organizer = new Organizer();
+    let processedFiles = 0;
+
+    organizer.on('organize-start', ({ sourceDirectory, outputDirectory }) => {
+      console.log(`Organizing: ${path.resolve(sourceDirectory)}`);
+      console.log(`Output: ${path.resolve(outputDirectory)}`);
+    });
+
+    organizer.on('copy-start', ({ source }) => {
+      console.log(`Copying: ${path.basename(source)}`);
+    });
+
+    organizer.on('copy-complete', () => {
+      processedFiles++;
+      console.log(`Copied: ${processedFiles} files`);
+    });
+
+    organizer.on('copy-error', ({ file, error }) => {
+      console.error(`\nFailed to copy ${file}: ${error}`);
+    });
+
+    organizer.on('organize-complete', (summary) => {
+      console.log('\n\nOrganization complete!');
+      console.log('----------------------------------');
+
+      for (const [category, count] of Object.entries(summary.byCategory)) {
+        console.log(`${category}: ${count} files`);
+      }
+
+      console.log('----------------------------------');
+      console.log(`Total copied: ${summary.copiedFiles} files`);
+      console.log(`Total size: ${formatSize(summary.totalSize)}`);
+    });
+
+    await organizer.organize(sourceDirectory, outputDirectory);
+  }
+
+  await main();

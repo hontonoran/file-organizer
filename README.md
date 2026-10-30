@@ -34,3 +34,16 @@ Recursively searches for duplicate files based on their content using SHA-256 ha
 - Calculating wasted disk space
 - Progress tracking using `EventEmitter`
 - File system error handling
+
+### Organize Command
+
+Recursively copies files into category-based directories while preserving the original files.
+
+**Features:**
+- Organizes files into Documents, Images, Archives, Code, Videos, and Other
+- Creates category directories automatically
+- Uses `fs.copyFile()` for files smaller than 10 MB
+- Uses streams and `pipeline()` for files 10 MB or larger
+- Prevents overwriting by generating unique filenames
+- Tracks copying progress using `EventEmitter`
+- Handles file system errors
