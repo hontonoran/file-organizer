@@ -35,6 +35,32 @@ function drawProgressBar(current, total, width = 20) {
   return `${'█'.repeat(filled)}${'░'.repeat(empty)} ${current}/${total}`;
 }
 
+function createProgress(label) {
+  let total = 0;
+
+  const line = (current) => `${label} ${drawProgressBar(current, total)}`;
+
+  return {
+    setTotal(value) {
+      total = value;
+    },
+
+    update(current) {
+      if (process.stdout.isTTY) {
+        process.stdout.write(`\r${line(current)}`);
+      }
+    },
+
+    finish(current) {
+      if (process.stdout.isTTY) {
+        process.stdout.write(`\r${line(current)}\n`);
+      } else {
+        console.log(line(current));
+      }
+    }
+  };
+}
+
 function printScanResults(statistics) {
   console.log('\nScan Results');
   console.log('----------------------------------');
@@ -83,27 +109,24 @@ function printScanResults(statistics) {
 
 async function runScan(directory) {
   const scanner = new Scanner();
+  const progress = createProgress('Processing...');
   let processedFiles = 0;
 
   scanner.on('scan-start', ({ directory }) => {
     console.log(`Scanning: ${path.resolve(directory)}`);
   });
 
+  scanner.on('files-listed', ({ total }) => {
+    progress.setTotal(total);
+  });
+
   scanner.on('file-found', () => {
     processedFiles += 1;
-    process.stdout.write(`\rProcessed: ${processedFiles} files`);
+    progress.update(processedFiles);
   });
 
   scanner.on('scan-complete', (statistics) => {
-    process.stdout.write('\r');
-
-    console.log(
-      `Processing... ${drawProgressBar(
-        processedFiles,
-        statistics.totalFiles
-      )}`
-    );
-
+    progress.finish(processedFiles);
     printScanResults(statistics);
   });
 
@@ -184,19 +207,26 @@ async function main() {
 
 async function runDuplicates(directory) {
   const finder = new DuplicateFinder();
+  const progress = createProgress('Calculating hashes...');
   let processedFiles = 0;
 
   finder.on('search-start', ({ directory }) => {
     console.log(`Searching for duplicates in: ${path.resolve(directory)}`);
   });
 
+  finder.on('files-listed', ({ total }) => {
+    progress.setTotal(total);
+  });
+
   finder.on('file-processed', () => {
     processedFiles += 1;
-    process.stdout.write(`\rProcessed: ${processedFiles} files`);
+    progress.update(processedFiles);
   });
 
   finder.on('duplicates-found', (results) => {
-    console.log('\n\nDuplicate Search Results');
+    progress.finish(processedFiles);
+
+    console.log('\nDuplicate Search Results');
     console.log('----------------------------------');
     console.log(`Total files scanned: ${results.totalFiles}`);
     console.log(`Duplicate groups: ${results.totalGroups}`);
@@ -222,6 +252,7 @@ async function runDuplicates(directory) {
 
 async function runOrganize(sourceDirectory, outputDirectory) {
   const organizer = new Organizer();
+  const progress = createProgress('Copying files...');
   let processedFiles = 0;
 
   organizer.on('organize-start', ({ sourceDirectory, outputDirectory }) => {
@@ -229,13 +260,13 @@ async function runOrganize(sourceDirectory, outputDirectory) {
     console.log(`Output: ${path.resolve(outputDirectory)}`);
   });
 
-  organizer.on('copy-start', ({ source }) => {
-    console.log(`Copying: ${path.basename(source)}`);
+  organizer.on('files-listed', ({ total }) => {
+    progress.setTotal(total);
   });
 
   organizer.on('copy-complete', () => {
     processedFiles++;
-    console.log(`Copied: ${processedFiles} files`);
+    progress.update(processedFiles);
   });
 
   organizer.on('copy-error', ({ file, error }) => {
@@ -243,7 +274,9 @@ async function runOrganize(sourceDirectory, outputDirectory) {
   });
 
   organizer.on('organize-complete', (summary) => {
-    console.log('\n\nOrganization complete!');
+    progress.finish(processedFiles);
+
+    console.log('\nOrganization complete!');
     console.log('----------------------------------');
 
     for (const [category, count] of Object.entries(summary.byCategory)) {
@@ -261,6 +294,7 @@ async function runOrganize(sourceDirectory, outputDirectory) {
 
 async function runCleanup(directory, olderThan, confirm) {
   const cleaner = new Cleanup();
+  const progress = createProgress('Deleting...');
   let deletedCount = 0;
 
   cleaner.on('cleanup-start', ({ directory, olderThan }) => {
@@ -275,12 +309,26 @@ async function runCleanup(directory, olderThan, confirm) {
     console.log(`  Age: ${Math.floor(file.ageInDays)} days`);
   });
 
+  cleaner.on('delete-start', ({ totalFiles, totalSize }) => {
+    console.log('\n----------------------------------');
+    console.log(
+      `WARNING: DELETING ${totalFiles} files (${formatSize(totalSize)}). ` +
+      'This action cannot be undone!\n'
+    );
+
+    progress.setTotal(totalFiles);
+  });
+
   cleaner.on('file-deleted', () => {
     deletedCount++;
-    console.log(`Deleted: ${deletedCount} files`);
+    progress.update(deletedCount);
   });
 
   cleaner.on('cleanup-complete', (results) => {
+    if (!results.dryRun && results.totalFiles > 0) {
+      progress.finish(deletedCount);
+    }
+
     console.log('\n----------------------------------');
     console.log(`Found: ${results.totalFiles} old files`);
     console.log(`Total size: ${formatSize(results.totalSize)}`);

@@ -4,67 +4,106 @@ A Node.js CLI tool for scanning directories, finding duplicate files, organizing
 
 ## Getting Started
 
-**Requirements:** Node.js 20.12+ and npm.
-No external runtime dependencies are required.
+**Requirements:** Node.js 20.12+. No external dependencies, so no `npm install` is needed.
 
 ```bash
 git clone https://github.com/hontonoran/file-organizer.git
 cd file-organizer
-npm install
+node file-organizer.js scan ~/Downloads
 ```
+
+## Usage
+
+```text
+node file-organizer.js <command> <directory> [options]
+```
+
+| Argument / option | Used by | Description |
+|---|---|---|
+| `<directory>` | all commands | Directory to process (searched recursively). |
+| `--output <target>` | `organize` | **Required.** Destination directory. Created if missing; cannot be inside the source. |
+| `--older-than <days>` | `cleanup` | **Required.** Files modified more than this many days ago are considered old. |
+| `--confirm` | `cleanup` | Actually delete the files. Without it, `cleanup` only lists them (dry run). |
+
+Commands can also be run through npm scripts: `npm run scan -- ~/Downloads`.
 
 ## Commands
 
-| Command | Description | Usage |
-|---|---|---|
-| `scan` | Recursively scans a directory and displays file statistics, including types, sizes, age, and largest files. | `node file-organizer.js scan <directory>` |
-| `duplicates` | Detects identical files using SHA-256 and calculates wasted disk space. | `node file-organizer.js duplicates <directory>` |
-| `organize` | Copies files into Documents, Images, Archives, Code, Videos, and Other categories. | `node file-organizer.js organize <source> --output <target>` |
-| `cleanup` | Lists files older than the specified number of days without deleting them. | `node file-organizer.js cleanup <directory> --older-than <days>` |
-| `cleanup --confirm` | Permanently deletes files matching the specified age threshold. | `node file-organizer.js cleanup <directory> --older-than <days> --confirm` |
+### `scan`
 
-Commands can also be executed through npm scripts, for example:
+Shows total files and size, statistics per file type, file age (7 / 30 / 90+ days), the 3 largest files and the oldest file.
 
 ```bash
-npm run scan -- ./test-files
+node file-organizer.js scan ~/Downloads
 ```
 
-## Technical Features
+```text
+Processing... ████████████████████ 16/16
 
-- **EventEmitter** — tracks scanning, hashing, copying, and deletion events.
-- **Streams** — processes files using `createReadStream()` and copies files of 10 MiB or more with `pipeline()`.
-- **SHA-256** — identifies duplicate files based on their content.
-- **Safe copying** — preserves original files and resolves filename conflicts with numeric suffixes.
-- **Error handling** — handles file system errors such as `ENOENT`, `EACCES`, and `EPERM`.
-- **Dry run** — prevents file deletion unless `--confirm` is explicitly provided.
+Total files: 16
+Total size: 33.4 MB
+...
+Largest Files:
+  1. big.bin (11.4 MB)
+```
+
+### `duplicates`
+
+Finds files with identical content by SHA-256 hash (read with streams) and shows wasted space for each group.
+
+```bash
+node file-organizer.js duplicates ~/Downloads
+```
+
+```text
+Group 1 (2 copies)
+SHA-256: efade562...
+File size: 11.4 MB
+  ~/Downloads/big.bin
+  ~/Downloads/backup/big_copy.bin
+Wasted space: 11.4 MB
+```
+
+### `organize`
+
+Copies files into `Documents`, `Images`, `Archives`, `Code`, `Videos` and `Other` folders. Originals are never moved. Files of 10 MiB or more are copied with `pipeline()`. Name conflicts get a suffix: `report.pdf` → `report(1).pdf`.
+
+```bash
+node file-organizer.js organize ~/Downloads --output ~/Organized
+```
+
+### `cleanup`
+
+Lists files older than `--older-than` days. Nothing is deleted unless `--confirm` is passed.
+
+```bash
+node file-organizer.js cleanup ~/Downloads --older-than 90            # dry run
+node file-organizer.js cleanup ~/Downloads --older-than 90 --confirm  # delete
+```
+
+All commands show a progress bar and exit with code `1` on errors (`ENOENT`, `EACCES`, `EPERM`, invalid arguments).
 
 ## Project Structure
 
 ```text
 file-organizer/
-├── file-organizer.js
+├── file-organizer.js         # CLI: argument parsing, output, progress bar
 ├── lib/
-│   ├── scanner.js
-│   ├── duplicates.js
-│   ├── organizer.js
-│   └── cleanup.js
+│   ├── scanner.js            # Scanner + shared getFiles()
+│   ├── duplicates.js         # DuplicateFinder
+│   ├── organizer.js          # Organizer
+│   └── cleanup.js            # Cleanup
+├── tests/
+│   └── file-organizer.test.js
 ├── package.json
 ├── .gitignore
 └── README.md
 ```
 
-## Important Notes
-
-The `organize` command copies files without removing the originals.
-
-The `cleanup` command runs in dry run mode by default. Using `--confirm` permanently deletes matching files and cannot be undone.
+Each class in `lib/` extends `EventEmitter`. File Organizer CLI subscribes to its events to print progress.
 
 ## Testing
-
-Run the automated tests using Node.js built-in test runner:
 
 ```bash
 npm test
 ```
-
-Tests cover scanning, duplicate detection, file organization, safe cleanup, and error handling.
