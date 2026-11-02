@@ -339,3 +339,72 @@ test('Cleanup emits delete-start only when --confirm is used', async (t) => {
   assert.equal(deleteStart.totalFiles, 1);
   assert.equal(deleteStart.totalSize, 11);
 });
+
+test('Scanner skips an unreadable subdirectory and keeps going', async (t) => {
+  const directory = await createTestDirectory(t);
+  const locked = path.join(directory, 'locked');
+
+  await fs.writeFile(path.join(directory, 'a.txt'), 'A');
+  await fs.mkdir(locked);
+  await fs.writeFile(path.join(locked, 'secret.txt'), 'S');
+  await fs.chmod(locked, 0o000);
+
+  try {
+    const scanner = new Scanner();
+    const skipped = [];
+    scanner.on('file-skipped', ({ path: skippedPath }) => skipped.push(skippedPath));
+
+    const statistics = await scanner.scan(directory);
+
+    assert.equal(statistics.totalFiles, 1);
+    assert.equal(statistics.skippedFiles, 1);
+    assert.deepEqual(skipped, [locked]);
+  } finally {
+    await fs.chmod(locked, 0o755);
+  }
+});
+
+test('DuplicateFinder and Organizer skip an unreadable file and keep going', async (t) => {
+  const directory = await createTestDirectory(t);
+  const source = path.join(directory, 'source');
+  const locked = path.join(source, 'locked.txt');
+
+  await fs.mkdir(source);
+  await fs.writeFile(path.join(source, 'a.txt'), 'A');
+  await fs.writeFile(locked, 'L');
+  await fs.chmod(locked, 0o000);
+
+  try {
+    const finder = new DuplicateFinder();
+    const results = await finder.findDuplicates(source);
+
+    assert.equal(results.skippedFiles, 1);
+
+    const organizer = new Organizer();
+    const errors = [];
+    organizer.on('copy-error', ({ file }) => errors.push(file));
+
+    const summary = await organizer.organize(source, path.join(directory, 'output'));
+
+    assert.equal(summary.copiedFiles, 1);
+    assert.equal(summary.skippedFiles, 1);
+    assert.deepEqual(errors, [locked]);
+  } finally {
+    await fs.chmod(locked, 0o644);
+  }
+});
+
+test('Cleanup --confirm with no old files does not emit delete-start', async (t) => {
+  const directory = await createTestDirectory(t);
+
+  await fs.writeFile(path.join(directory, 'fresh.txt'), 'New');
+
+  const cleanup = new Cleanup();
+  let deleteStarted = false;
+  cleanup.on('delete-start', () => { deleteStarted = true; });
+
+  const results = await cleanup.cleanup(directory, 90, true);
+
+  assert.equal(deleteStarted, false);
+  assert.equal(results.totalFiles, 0);
+});

@@ -35,6 +35,22 @@ function drawProgressBar(current, total, width = 20) {
   return `${'█'.repeat(filled)}${'░'.repeat(empty)} ${current}/${total}`;
 }
 
+function formatDate(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function printSkipped({ path: skippedPath, error }) {
+  console.warn(`\nSkipped: ${skippedPath} (${error.code || error.message})`);
+}
+
+function printSkippedTotal(skippedFiles) {
+  if (skippedFiles > 0) {
+    console.log(`Skipped: ${skippedFiles} files (see warnings above)`);
+  }
+}
+
 function createProgress(label) {
   let total = 0;
 
@@ -69,7 +85,11 @@ function printScanResults(statistics) {
 
   console.log('\nBy File Type:');
 
-  for (const [extension, data] of statistics.byType) {
+  const byTypeSorted = [...statistics.byType].sort(
+    ([, a], [, b]) => b.totalSize - a.totalSize
+  );
+
+  for (const [extension, data] of byTypeSorted) {
     console.log(
       `  ${extension}: ${data.count} files, ${formatSize(data.totalSize)}`
     );
@@ -125,9 +145,12 @@ async function runScan(directory) {
     progress.update(processedFiles);
   });
 
+  scanner.on('file-skipped', printSkipped);
+
   scanner.on('scan-complete', (statistics) => {
     progress.finish(processedFiles);
     printScanResults(statistics);
+    printSkippedTotal(statistics.skippedFiles);
   });
 
   await scanner.scan(directory);
@@ -223,6 +246,8 @@ async function runDuplicates(directory) {
     progress.update(processedFiles);
   });
 
+  finder.on('file-skipped', printSkipped);
+
   finder.on('duplicates-found', (results) => {
     progress.finish(processedFiles);
 
@@ -245,6 +270,7 @@ async function runDuplicates(directory) {
 
     console.log('\n----------------------------------');
     console.log(`Total wasted space: ${formatSize(results.totalWastedSpace)}`);
+    printSkippedTotal(results.skippedFiles);
   });
 
   await finder.findDuplicates(directory);
@@ -269,8 +295,10 @@ async function runOrganize(sourceDirectory, outputDirectory) {
     progress.update(processedFiles);
   });
 
+  organizer.on('file-skipped', printSkipped);
+
   organizer.on('copy-error', ({ file, error }) => {
-    console.error(`\nFailed to copy ${file}: ${error}`);
+    console.warn(`\nSkipped: ${file} (copy failed: ${error})`);
   });
 
   organizer.on('organize-complete', (summary) => {
@@ -286,6 +314,7 @@ async function runOrganize(sourceDirectory, outputDirectory) {
     console.log('----------------------------------');
     console.log(`Total copied: ${summary.copiedFiles} files`);
     console.log(`Total size: ${formatSize(summary.totalSize)}`);
+    printSkippedTotal(summary.skippedFiles);
   });
 
   await organizer.organize(sourceDirectory, outputDirectory);
@@ -305,7 +334,7 @@ async function runCleanup(directory, olderThan, confirm) {
   cleaner.on('file-found', (file) => {
     console.log(`\n${file.path}`);
     console.log(`  Size: ${formatSize(file.size)}`);
-    console.log(`  Modified: ${file.modified.toLocaleDateString()}`);
+    console.log(`  Modified: ${formatDate(file.modified)}`);
     console.log(`  Age: ${Math.floor(file.ageInDays)} days`);
   });
 
@@ -318,6 +347,8 @@ async function runCleanup(directory, olderThan, confirm) {
 
     progress.setTotal(totalFiles);
   });
+
+  cleaner.on('file-skipped', printSkipped);
 
   cleaner.on('file-deleted', () => {
     deletedCount++;
@@ -333,7 +364,9 @@ async function runCleanup(directory, olderThan, confirm) {
     console.log(`Found: ${results.totalFiles} old files`);
     console.log(`Total size: ${formatSize(results.totalSize)}`);
 
-    if (results.dryRun) {
+    if (results.totalFiles === 0) {
+      console.log('\nNo old files found. Nothing to delete.');
+    } else if (results.dryRun) {
       console.log('\nDRY RUN: No files were deleted.');
       console.log('Use --confirm to delete these files.');
     } else {
@@ -341,6 +374,8 @@ async function runCleanup(directory, olderThan, confirm) {
       console.log(`Deleted: ${results.deletedFiles} files`);
       console.log(`Space freed: ${formatSize(results.deletedSize)}`);
     }
+
+    printSkippedTotal(results.skippedFiles);
   });
 
   await cleaner.cleanup(directory, olderThan, confirm);

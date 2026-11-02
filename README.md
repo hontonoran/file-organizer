@@ -47,13 +47,13 @@ Total files: 20
 Total size: 20.3 MB
 
 By File Type:
-  .md: 2 files, 60 B
-  .png: 12 files, 8.0 MB
-  .csv: 1 files, 26 B
   .mp4: 1 files, 12.0 MB
-  .zip: 1 files, 46.9 KB
-  .js: 1 files, 22 B
+  .png: 12 files, 8.0 MB
   .pdf: 2 files, 290.0 KB
+  .zip: 1 files, 46.9 KB
+  .md: 2 files, 60 B
+  .csv: 1 files, 26 B
+  .js: 1 files, 22 B
 
 File Age:
   Last 7 days: 18
@@ -145,12 +145,12 @@ Looking for files older than 90 days...
 
 /Users/username/Downloads/Screenshot 2026-06-12 at 10.23.51.png
   Size: 1.7 MB
-  Modified: 6/12/2026
+  Modified: 2026-06-12
   Age: 142 days
 
 /Users/username/Downloads/invoice-2025-03.pdf
   Size: 141.6 KB
-  Modified: 3/15/2025
+  Modified: 2025-03-15
   Age: 596 days
 
 ----------------------------------
@@ -190,16 +190,24 @@ Each command is a class in `lib/` that extends `EventEmitter`. The classes only 
 
 | Class | Events |
 |---|---|
-| `Scanner` | `scan-start`, `files-listed`, `file-found`, `scan-complete` |
-| `DuplicateFinder` | `search-start`, `files-listed`, `file-processed`, `duplicates-found` |
-| `Organizer` | `organize-start`, `files-listed`, `copy-start`, `copy-complete`, `copy-error`, `organize-complete` |
-| `Cleanup` | `cleanup-start`, `file-found`, `delete-start`, `file-deleted`, `cleanup-complete` |
+| `Scanner` | `scan-start`, `files-listed`, `file-found`, `file-skipped`, `scan-complete` |
+| `DuplicateFinder` | `search-start`, `files-listed`, `file-processed`, `file-skipped`, `duplicates-found` |
+| `Organizer` | `organize-start`, `files-listed`, `copy-start`, `copy-complete`, `copy-error`, `file-skipped`, `organize-complete` |
+| `Cleanup` | `cleanup-start`, `file-found`, `delete-start`, `file-deleted`, `file-skipped`, `cleanup-complete` |
 
 `files-listed` (`{ total }`) gives the total number of files before processing starts, so the progress bar can show `current/total`.
 
 ## Error Handling
 
-All file system operations are wrapped in `try...catch`. On any error the message is printed and the process exits with code `1`.
+All file system operations are wrapped in `try...catch`. If the directory itself cannot be read, the message is printed and the process exits with code `1`.
+
+A single unreadable subdirectory or file does not stop the command: it is skipped with a warning, and the summary shows how many files were skipped:
+
+```text
+Skipped: /Users/username/Downloads/private (EACCES)
+...
+Skipped: 1 files (see warnings above)
+```
 
 | Code | Message |
 |---|---|
